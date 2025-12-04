@@ -7,7 +7,7 @@ feflow-devkit-vite 为feflow套件 支持编译指定React，Vue项目模板 通
 
 ## 特性
 
-- 使用rspack最新的构建解决方案
+- 使用vite最新的构建解决方案
 
 - 支持React，Vue的编译运行
 
@@ -140,13 +140,13 @@ cnpm install @feflow/cli -g
 ### commons
 | 参数        | 说明                                    | 必须 | 类型   | 默认值 |
 | ----------- | --------------------------------------- | ---- | ------ | ------ |
-| entry       | webpack编译入口，例子index.tsx          | true | string | 无     |
+| entry       | vite编译入口，例子index.tsx          | true | string | 无     |
 | isModule    | 开启css模块化 (vue项目不需要开启)       | true | object | {}     |
-| isMinicss   | 是否需要抽离css (本地调试环境不需要)    | true | object | {}     |
-| hasAnalyzer | 是否开启webpack包大小的调试             | true | object | {}     |
+| isMinicss   | 是否需要抽离css (本地调试环境不需要, vite默认已处理)    | true | object | {}     |
+| hasAnalyzer | 是否开启包大小的调试             | true | object | {}     |
 | analyzer    | analyzer调试包的配置                    | true | object | {}     |
-| port        | webpack静态服务器启动端口号             | true | number | 无     |
-| alias       | webpack别名配置                         | true | object | {}     |
+| port        | vite静态服务器启动端口号             | true | number | 无     |
+| alias       | vite别名配置                         | true | object | {}     |
 | envs        | 环境变量配置 目前只支持固定环境变量配置 | true | object | {}     |
 
 ### 配置说明

@@ -1,11 +1,10 @@
-import Builder from "./build/index.js";
-import { deepCloneUnique } from "./tools/index.js";
-const { rspack } = require("@rspack/core");
+const Builder = require("./build/index.js");
+const { deepCloneUnique } = require("./tools/index.js");
+const { build: viteBuild, mergeConfig } = require("vite");
 const chalk = require("chalk");
-const currentConfig = require("./rspack/rspack.prod.config");
-const merge = require("webpack-merge");
+const currentConfig = require("./vite/vite.prod.config");
 const fs = require("fs");
-const build = new Builder();
+const builder = new Builder();
 let config = {}, importConfig = {};
 
 // 将公共配置绑定到各个环境
@@ -13,9 +12,10 @@ function setSingleConfig(options) {
 	for (let key in options.devkit.commands) {
 		// 单独配置的选项会覆盖公共配置
 		// let single = Object.assign(options.devkit.commons, options.devkit.commands[key].options)
-		let single = merge(
+		let single = mergeConfig(
 			options.devkit.commons,
-			options.devkit.commands[key].options
+			options.devkit.commands[key].options,
+			false
 		)
 		single = deepCloneUnique(single, "optionsId")
 		// 设置当前当前执行的环境变量
@@ -33,37 +33,26 @@ function getConfig(options, env) {
 
 /**
  * @function run
- * @desc     创建用于开发过程中的webpack打包配置
+ * @desc     创建用于开发过程中的vite打包配置
  *
  * @param {Object}  options                         参数
  *
  * @example
  */
 
-export function run(ctx, options) {
+export async function run(ctx, options) {
 	importConfig = getConfig(ctx.projectConfig, options.env);
-	config = merge(currentConfig, build.createProdConfig(importConfig));
-	// 导出config到config.json
-	rspack(config, (err, stats) => {
-		if (err) throw err;
-		process.stdout.write(
-			stats.toString({
-				publicPath: true,
-				entrypoints: true,
-				colors: true,
-				assets: false,
-				modules: false,
-				children: false,
-				chunks: false,
-				chunkModules: false,
-				builtAt: true,
-				cached: true,
-			}) + "\n\n"
-		);
-		if (stats.hasErrors()) {
-			console.log(chalk.red("  Build failed with errors.\n"));
-			process.exit(1);
-		}
+	config = mergeConfig(currentConfig, builder.createProdConfig(importConfig));
+	fs.writeFileSync(
+		"config.json",
+		JSON.stringify(config, null, 2)
+	);
+	try {
+		await viteBuild(config);
 		console.log(chalk.cyan("  Build complete.\n"));
-	});
+	} catch (err) {
+		console.log(chalk.red("  Build failed with errors.\n"));
+		console.error(err);
+		process.exit(1);
+	}
 }

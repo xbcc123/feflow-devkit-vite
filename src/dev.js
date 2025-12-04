@@ -1,21 +1,19 @@
-import Builder from "./build/index.js";
-import { deepCloneUnique } from "./tools/index.js";
-const { rspack } = require("@rspack/core");
-const { RspackDevServer } = require("@rspack/dev-server");
-const currentConfig = require("./rspack/rspack.dev.config")
-const merge = require('webpack-merge');
+const Builder = require("./build/index.js");
+const { deepCloneUnique } = require("./tools/index.js");
+const { createServer, mergeConfig, defineConfig } = require("vite");
+const currentConfig = require("./vite/vite.dev.config");
+const fs = require("fs");
 
 let config = {}, importConfig = {};
-
-
 
 let build = new Builder();
 
 function setSingleConfig(options) {
 	for (let key in options.devkit.commands) {
-		let single = merge.smart(
+		let single = mergeConfig(
 			options.devkit.commons,
-			options.devkit.commands[key].options
+			options.devkit.commands[key].options,
+			false
 		);
 		single = deepCloneUnique(single, "optionsId");
 		single.currentEnv = key;
@@ -30,12 +28,20 @@ function getConfig(options, env) {
 }
 
 module.exports = async (ctx) => {
-	importConfig = getConfig(ctx.projectConfig, "dev")
-	config = merge(currentConfig, build.createDevConfig(importConfig))
-	const compiler = rspack(config)
-	const devServerOptions = Object.assign({}, config.devServer, {
-		open: true,
-	})
-	const server = new RspackDevServer(devServerOptions, compiler);
-	await server.start();
+	importConfig = getConfig(ctx.projectConfig, "dev");
+
+	config = mergeConfig(
+		currentConfig,
+		build.createDevConfig(importConfig)
+	)
+
+	fs.writeFileSync(
+		"configDev.json",
+		JSON.stringify(config, null, 2)
+	);
+
+	const server = await createServer(config);
+	await server.listen();
+
+	server.printUrls();
 };

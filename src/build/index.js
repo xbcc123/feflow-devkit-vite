@@ -1,10 +1,8 @@
 const path = require("path");
-const merge = require("webpack-merge");
-const { BundleAnalyzerPlugin } = require("webpack-bundle-analyzer");
+const { mergeConfig } = require("vite");
 const { deepCopy } = require("../tools/index.js");
-const { getLoaderPath } = require("../utils/index.js");
 const fs = require("fs");
-const { rspack } = require("@rspack/core");
+const { visualizer } = require('rollup-plugin-visualizer');
 
 function getPath(filename) {
 	let currDir = process.cwd()
@@ -27,8 +25,8 @@ if (!projectRoot) {
 }
 
 const baseConfig = {
-	module: {},
 	resolve: {},
+	plugins: [],
 };
 
 class Builder {
@@ -36,84 +34,66 @@ class Builder {
 	createDevConfig(options) {
 		const devConfig = deepCopy(baseConfig);
 		devConfig.mode = "development";
-		// 设置打包规则
-		const devRules = [];
-
-		// 设置CSS解析规则  isMinicss是否开启css抽离  isModule是否开启css Modules
-		devRules.push(this.setCssRule(options.isModule, options.isMinicss));
-		devRules.push(this.setLessRule(options.isModule, options.isMinicss));
-		devRules.push(this.setSassRule(options.isModule, options.isMinicss));
-		devRules.push(this.setStylusRule(options.isModule, options.isMinicss));
-
 		// 设置打包插件
-		let devPlugins = [];
-		// 设置提取CSS为一个单独的文件的插件
-		if (options.isMinicss) {
-			devPlugins.push(this.setMiniCssExtractPlugin());
-		}
-
-		devConfig.module.rules = devRules;
-		devConfig.plugins = devPlugins;
-
+		// let devPlugins = [];
+		// devConfig.plugins = devPlugins;
 		// 设置启动服务端口号 本地服务配置
-		devConfig.devServer = this.setDevServer(options.devServer);
-		return merge(this.mixCreateConfig(options), devConfig);
+		devConfig.server = this.setDevServer(options.devServer);
+		return mergeConfig(this.mixCreateConfig(options), devConfig);
 	}
 
 	// 创建prod配置
 	createProdConfig(options) {
 		const prodConfig = deepCopy(baseConfig);
 		prodConfig.mode = "production";
-		// 设置打包规则
-		const prodRules = [];
-		prodRules.push(this.setCssRule(options.isModule, options.isMinicss));
-		prodRules.push(this.setLessRule(options.isModule, options.isMinicss));
-		prodRules.push(this.setSassRule(options.isModule, options.isMinicss));
-		prodRules.push(this.setStylusRule(options.isModule, options.isMinicss));
+
+		// 设置打包插件
 		let prodPlugins = [];
-		if (options.isMinicss) {
-			prodPlugins.push(this.setMiniCssExtractPlugin());
-		}
-		prodConfig.module.rules = prodRules;
-		prodConfig.plugins = prodPlugins;
-		return merge(this.mixCreateConfig(options), prodConfig);
+
+		// prodConfig.plugins = prodPlugins;
+
+		return mergeConfig(this.mixCreateConfig(options), prodConfig);
 	}
 
 	// 公用配置
 	mixCreateConfig(options) {
 		const mixConfig = deepCopy(baseConfig);
-		let minRules = [];
 		let mixPlugins = [];
+
+		// 设置环境变量
 		mixPlugins.push(this.setDefinePlugin(options.envs, options.currentEnv));
+
 		// 是否启动打包性能分析
 		if (options.hasAnalyzer) {
-			mixPlugins.push(this.setBundleSnalyzerPlugin(options.analyzer));
+			mixPlugins.push(this.setBundleAnalyzerPlugin(options.analyzer));
 		}
-		mixConfig.entry = this.setEntry(options.entry);
-		mixConfig.resolve.alias = this.setAlias(options.alias);
-		mixConfig.module.rules = minRules;
-		mixConfig.plugins = mixPlugins;
+
+		// mixConfig.resolve = {
+		// 	extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json", ".vue"],
+		// 	alias: Object.assign({
+		// 		"vue": path.resolve(projectRoot, "node_modules/vue/dist/vue.esm.js"),
+		// 	}, this.setAlias(options.alias)),
+		// };
+		// mixConfig.plugins = mixPlugins;
+		mixConfig.css = this.setCssConfig(options.isModule);
+		mixConfig.define = {};
+
 		return mixConfig;
 	}
 
-	/**
-	 * externals 配置
-	 * @private
-	 */
-	// Rspack 暂无官方 externals 插件，建议直接在 config.externals 配置
-	setExternalPlugin(externals) {
-		// 这里保留方法结构，实际 externals 建议直接在 config.externals 配置
-		return null;
-	}
-
-	// 设置打包优化
-	setBundleSnalyzerPlugin(analyzer) {
+	// 设置打包性能分析
+	setBundleAnalyzerPlugin(analyzer) {
 		if (!analyzer || JSON.stringify(analyzer) === "{}") {
 			analyzer = {
 				analyzerPort: "4321",
 			};
 		}
-		return new BundleAnalyzerPlugin(analyzer);
+		return visualizer({
+			open: true,
+			gzipSize: true,
+			brotliSize: true,
+			filename: "stats.html",
+		});
 	}
 
 	// 设置别名
@@ -128,134 +108,26 @@ class Builder {
 		return aliasObj
 	}
 
-	// 设置入口
-	setEntry(entry) {
-		return path.join(projectRoot, `./src/${entry}`)
-	}
-
-	// isMinicss 是否开启css抽离  isModule 是否开启css Modules
-	setCssRule(isModule, isMinicss) {
-		return {
-			test: /\.css$/,
-			use: [
-				    getLoaderPath('style-loader'),
-				   {
-					   loader: getLoaderPath('css-loader'),
-					options: {
-						modules: isModule
-							? {
-								mode: "local",
-								exportGlobals: true,
-								localIdentName:
-									"[path][name]__[local]--[hash:base64:5]",
-							  }
-							: false,
-					},
+	// 设置 CSS 配置
+	setCssConfig(isModule) {
+		const cssConfig = {
+			preprocessorOptions: {
+				less: {
+					javascriptEnabled: true,
 				},
-		 {
-            loader: 'builtin:lightningcss-loader',
-            options: {
-              targets: 'ie 10',
-            },
-          },
-			],
+			},
+		};
+
+		// 设置 CSS Modules
+		if (isModule) {
+			cssConfig.modules = {
+				localsConvention: "camelCaseOnly",
+				scopeBehaviour: "local",
+				generateScopedName: "[path][name]__[local]--[hash:base64:5]",
+			};
 		}
-	}
 
-	setLessRule(isModule,isMinicss) {
-		return {
-			test: /\.less$/,
-			use: [
-				    getLoaderPath('style-loader'),
-				   {
-					   loader: getLoaderPath('css-loader'),
-					options: {
-						modules: isModule
-							? {
-								mode: "local",
-								exportGlobals: true,
-								localIdentName:
-									"[path][name]__[local]--[hash:base64:5]",
-							  }
-							: false,
-					},
-				},
-		 {
-            loader: 'builtin:lightningcss-loader',
-            options: {
-              targets: 'ie 10',
-            },
-          },
-				   {
-					   loader: getLoaderPath('less-loader'),
-					options: { lessOptions: { javascriptEnabled: true } },
-				},
-			],
-		}
-	}
-
-	setSassRule(isModule, isMinicss) {
-		return {
-			test: /\.s[ac]ss$/,
-			use: [
-				    getLoaderPath('style-loader'),
-				   {
-					   loader: getLoaderPath('css-loader'),
-					options: {
-						modules: isModule
-							? {
-								mode: "local",
-								exportGlobals: true,
-								localIdentName:
-									"[path][name]__[local]--[hash:base64:5]",
-							  }
-							: false,
-					},
-				},
-			 {
-            loader: 'builtin:lightningcss-loader',
-            options: {
-              targets: 'ie 10',
-            },
-          },
-				   getLoaderPath('sass-loader'),
-			],
-		}
-	}
-
-	setStylusRule(isModule, isMinicss) {
-		return {
-			test: /\.sty(l|lus)$/,
-			use: [
-				    getLoaderPath('style-loader'),
-				   {
-					   loader: getLoaderPath('css-loader'),
-					options: {
-						modules: isModule
-							? {
-								mode: "local",
-								exportGlobals: true,
-								localIdentName:
-									"[path][name]__[local]--[hash:base64:5]",
-							  }
-							: false,
-					},
-				},
-			 {
-            loader: 'builtin:lightningcss-loader',
-            options: {
-              targets: 'ie 10',
-            },
-          },
-				   getLoaderPath('stylus-loader'),
-			],
-		}
-	}
-
-	setMiniCssExtractPlugin() {
-		return new rspack.CssExtractRspackPlugin({
-			filename: "static/css/[name].[contenthash].css",
-		})
+		return cssConfig;
 	}
 
 	setDevServer(devServer) {
@@ -266,11 +138,20 @@ class Builder {
 		)
 	}
 
+	// 设置环境变量插件
 	setDefinePlugin(envs, currentEnv) {
-		return new rspack.DefinePlugin({
-			"process.env": envs[currentEnv].envObj,
-		});
+		if (envs && currentEnv) {
+			return {
+				name: 'define-env',
+				config: () => ({
+					define: {
+						'process.env': envs[currentEnv].envObj,
+					},
+				}),
+			};
+		}
+		return null;
 	}
 }
 
-export default Builder
+module.exports = Builder
